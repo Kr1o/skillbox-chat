@@ -15,7 +15,6 @@ class ServerProtocol(asyncio.Protocol):
 
     def data_received(self, data: bytes):
         print(data)
-
         decoded = data.decode()
 
         if self.login is not None:
@@ -23,9 +22,15 @@ class ServerProtocol(asyncio.Protocol):
         else:
             if decoded.startswith("login:"):
                 self.login = decoded.replace("login:", "").replace("\r\n", "")
+
+                if self.login.lower() in map(lambda x:x.lower(), self.server.login):
+                    self.existing_login(self.login)
+
+                self.server.login.append(self.login)
                 self.transport.write(
                     f"Привет, {self.login}!\n".encode()
                 )
+                self.send_history()
             else:
                 self.transport.write("Неправильный логин\n".encode())
 
@@ -40,16 +45,31 @@ class ServerProtocol(asyncio.Protocol):
 
     def send_message(self, content: str):
         message = f"{self.login}: {content}\n"
+        self.server.message_history.append(message)
 
         for user in self.server.clients:
             user.transport.write(message.encode())
 
+    def existing_login(self, login):
+        self.transport.write(
+            f"Логин {login} занят, попробуйте другой\n".encode()
+        )
+        self.transport.close()
+
+    def send_history(self):
+        for msg in self.server.message_history[-10:]:
+            self.transport.write(f"{msg}\n".encode())
+
 
 class Server:
     clients: list
+    login: list
+    message_history: list
 
     def __init__(self):
         self.clients = []
+        self.login = []
+        self.message_history = []
 
     def build_protocol(self):
         return ServerProtocol(self)
